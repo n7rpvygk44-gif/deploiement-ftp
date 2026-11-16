@@ -18,6 +18,14 @@
 Options -Indexes
 RewriteEngine On
 
+# 0. Forcer le HTTPS (redirection permanente 301), AVANT toute réécriture.
+#    portfolio/public/.htaccess le fait aussi, mais là-bas l'adresse a déjà été
+#    réécrite en /portfolio/public/... : le visiteur serait redirigé vers une
+#    mauvaise adresse. Ici, %{REQUEST_URI} est encore l'adresse tapée.
+RewriteCond %{HTTPS} !=on
+RewriteCond %{HTTP:X-Forwarded-Proto} !=https
+RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
+
 # 1. Adresse /portfolio/... tapée par un visiteur (code, données, config.php...) :
 #    accès interdit (403).
 #    THE_REQUEST = la ligne exacte envoyée par le navigateur (« GET /chemin HTTP/1.1 »).

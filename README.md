@@ -17,6 +17,7 @@ Script Python qui met en ligne mon portfolio sur un serveur FTP à partir de son
 | 3. Connexion | Se connecte au serveur en **FTPS** (FTP chiffré par TLS) : le mot de passe et les fichiers ne circulent pas en clair. | `AUTH TLS`, `USER`/`PASS`, `PROT P` |
 | 4. Envoi | Envoie les fichiers, supprime sur le serveur ceux effacés dans Git, puis note le commit déployé dans `etat-deploiement.json`. | `MKD`, `STOR`, `DELE`, `QUIT` |
 | 5. Racine | Place le `.htaccess` de la racine du site (`infomaniak/htaccess-racine.txt`) : l'adresse du site affiche `portfolio/public/`, et l'accès direct au code et aux données est refusé (403). Utile quand on ne peut pas choisir le dossier racine. | `RETR`, `STOR` |
+| 6. Hors Git | Envoie les fichiers que Git ne doit pas contenir mais dont le site a besoin : `data/admin.json`, le compte du backoffice, créé sur le Mac avec `php bin/create-admin.php`. Seulement s'il a changé. | `RETR`, `STOR` |
 
 Règles de sécurité :
 

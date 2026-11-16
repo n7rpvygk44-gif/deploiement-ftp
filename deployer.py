@@ -101,6 +101,7 @@ def lire_configuration(chemin):
         "proteger": _liste(ini.get("envoi", "proteger", fallback="")),
         "supprimer": ini.getboolean("envoi", "supprimer_fichiers_effaces", fallback=True),
         # Partie [racine] : .htaccess à placer à la racine du site (vide = rien)
+        "hors_git": _liste(ini.get("envoi", "hors_git", fallback="")),
         "htaccess_local": ini.get("racine", "htaccess", fallback="").strip(),
         "htaccess_distant": ini.get("racine", "dossier", fallback="/").rstrip("/") + "/.htaccess",
     }
@@ -289,6 +290,20 @@ class FTPSAvecReprise(ftplib.FTP_TLS):
             conn.close()
         return self.voidresp()  # le serveur confirme la réception (code 226)
 
+    def retrbinary(self, cmd, callback, blocksize=8192, rest=None):
+        """Téléchargement, avec la même fermeture directe que storbinary."""
+        self.voidcmd("TYPE I")
+        conn = self.transfercmd(cmd, rest)
+        try:
+            while True:
+                bloc = conn.recv(blocksize)
+                if not bloc:
+                    break
+                callback(bloc)
+        finally:
+            conn.close()
+        return self.voidresp()
+
 
 def se_connecter(reglages):
     """Ouvre la connexion FTP (chiffrée si possible) et renvoie l'objet connexion."""
@@ -421,6 +436,45 @@ def envoyer(ftp, reglages, commit, a_envoyer, a_supprimer, essai):
               + str(proteges) + " protégé(s).")
 
 
+def lire_sur_serveur(ftp, distant):
+    """Télécharge un fichier du serveur (RETR) et renvoie son contenu, ou None s'il n'existe pas."""
+    contenu = io.BytesIO()
+    try:
+        ftp.retrbinary("RETR " + distant, contenu.write)
+    except ftplib.error_perm:
+        return None
+    return contenu.getvalue()
+
+
+def envoyer_fichiers_hors_git(ftp, reglages, essai):
+    """
+    Envoie les fichiers qui ne sont PAS dans Git mais dont le site a besoin,
+    par exemple data/admin.json (le compte du backoffice /admin).
+    Ce fichier contient l'empreinte du mot de passe : il ne doit jamais aller sur
+    GitHub, c'est pourquoi il est créé sur le Mac (php bin/create-admin.php) puis
+    envoyé directement au serveur en FTPS. Il n'est envoyé que s'il a changé.
+    """
+    if not reglages["hors_git"]:
+        return
+    titre("6. Fichiers hors Git (compte administrateur...)")
+    for chemin in reglages["hors_git"]:
+        local = reglages["dossier_local"] / chemin
+        distant = reglages["dossier_distant"] + "/" + chemin
+        if not local.exists():
+            print("  absent sur le Mac, ignoré : " + chemin)
+            if chemin == "data/admin.json":
+                print("    pour le créer : cd " + str(reglages["dossier_local"]) + " puis php bin/create-admin.php")
+            continue
+        voulu = local.read_bytes()
+        if lire_sur_serveur(ftp, distant) == voulu:
+            print("  déjà à jour : " + chemin)
+        elif essai:
+            print("  enverrait : " + chemin)
+        else:
+            ftp.storbinary("STOR " + distant, io.BytesIO(voulu))
+            print("  envoyé : " + chemin)
+
+
 def installer_htaccess_racine(ftp, reglages, essai):
     """
     Place le fichier .htaccess de la racine du site (voir infomaniak/htaccess-racine.txt).
@@ -437,13 +491,9 @@ def installer_htaccess_racine(ftp, reglages, essai):
     voulu = local.read_bytes()
     distant = reglages["htaccess_distant"]
 
-    # On télécharge la version du serveur (RETR) pour la comparer.
-    actuel = io.BytesIO()
-    try:
-        ftp.retrbinary("RETR " + distant, actuel.write)
-        actuel = actuel.getvalue()
-    except ftplib.error_perm:
-        actuel = None  # pas encore de .htaccess sur le serveur
+    # On télécharge la version du serveur (RETR) pour la comparer
+    # (None : pas encore de .htaccess sur le serveur).
+    actuel = lire_sur_serveur(ftp, distant)
 
     if actuel == voulu:
         print("  " + distant + " est déjà à jour.")
@@ -487,7 +537,7 @@ def main():
     commit = recuperer_depot(reglages)
     a_envoyer, a_supprimer = lister_changements(reglages, commit, args.tout)
 
-    if not a_envoyer and not a_supprimer and not reglages["htaccess_local"]:
+    if not a_envoyer and not a_supprimer and not reglages["htaccess_local"] and not reglages["hors_git"]:
         print("\nLe serveur est déjà à jour. Fin.")
         return
 
@@ -498,6 +548,7 @@ def main():
         else:
             print("\nAucun fichier du portfolio à envoyer : le serveur est déjà à jour.")
         installer_htaccess_racine(ftp, reglages, args.essai)
+        envoyer_fichiers_hors_git(ftp, reglages, args.essai)
     except (OSError, ftplib.Error) as erreur:
         # On ne note pas le commit : le prochain lancement renverra les mêmes fichiers.
         arreter("l'envoi a été interrompu : " + str(erreur) + "\nRelance le script, il reprendra.")

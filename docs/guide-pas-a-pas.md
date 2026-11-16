@@ -214,6 +214,26 @@ Si la page « Bienvenue » s'affiche encore : vide le cache du navigateur (Cmd +
 
 ---
 
+## 7 bis. Activer /admin sur le site de l'école (une seule fois)
+
+Le backoffice `/admin` a besoin d'un compte, rangé dans `data/admin.json`. Ce fichier contient l'**empreinte** du mot de passe (pas le mot de passe lui-même) : il ne va **jamais** sur GitHub (`.gitignore`). Sur alwaysdata, on le crée en SSH ; l'école ne donne que le FTP, donc on le crée **sur le Mac** et le script l'envoie.
+
+```bash
+cd ~/Documents/portfolio-dashboard   # le dossier du portfolio (pas celui du script)
+php bin/create-admin.php             # demande un identifiant puis un mot de passe (12 caractères minimum)
+cd ~/Documents/deploiement-ftp       # retour dans le dossier du script
+python3 deployer.py                  # l'étape 6 envoie data/admin.json
+```
+
+- `php` doit être installé (Homebrew : `brew install php`), c'est déjà le cas sur ton Mac.
+- Pendant la saisie du mot de passe, rien ne s'affiche : c'est normal.
+- Le même compte marche aussi sur ton site local (`php -S localhost:8000 -t public bin/router.php`).
+- Pour changer de mot de passe : relance `php bin/create-admin.php`, puis `python3 deployer.py`.
+
+Vérification : https://olivier.pizelle.mds-nantes.fr/admin affiche la page de connexion, et tes identifiants ouvrent le tableau de bord. `data/admin.json` reste illisible depuis Internet (403), grâce au `.htaccess` de la racine et à celui de `data/`.
+
+---
+
 ## 8. Les fois suivantes (le circuit complet)
 
 1. Une modification du site est fusionnée sur `main` sur GitHub.
@@ -259,6 +279,7 @@ Le fichier `deployer.py` est découpé en fonctions, une par étape. Chacune est
 | `lister_changements()` | **Étape 2.** Lit le dernier commit envoyé dans `etat-deploiement.json`, puis `git diff --name-status` pour lister les fichiers ajoutés, modifiés et supprimés. Première fois : `git ls-files` (tous les fichiers). Retire les fichiers exclus. |
 | `se_connecter()` | **Étape 3.** Connexion FTPS avec `ftplib.FTP_TLS` : `AUTH TLS` (chiffre la connexion), `login`, `PROT P` (chiffre aussi les transferts), mode passif. |
 | `envoyer()` | **Étape 4.** Pour chaque fichier : vérifie s'il est protégé, crée les dossiers manquants (`MKD`), envoie le contenu (`STOR`). Supprime les fichiers effacés dans Git (`DELE`). |
+| `envoyer_fichiers_hors_git()` | **Étape 6.** Envoie les fichiers absents de Git dont le site a besoin (`data/admin.json`), seulement s'ils ont changé. |
 | `installer_htaccess_racine()` | **Étape 5.** Télécharge le `.htaccess` de la racine (`RETR`), le compare à `infomaniak/htaccess-racine.txt` et l'envoie s'il manque ou a changé, après en avoir gardé une copie. |
 | `memoriser_deploiement()` | Note le commit envoyé, seulement si tout s'est bien passé. |
 | `main()` | Lit les options (`--essai`, `--tout`) et enchaîne les étapes. |
