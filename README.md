@@ -2,6 +2,8 @@
 
 Script Python qui met en ligne mon portfolio sur un serveur FTP à partir de son dépôt Git.
 
+**Débutant ? Commence par le [guide pas à pas](docs/guide-pas-a-pas.md)** : il explique chaque étape et chaque commande pour refaire l’exercice depuis zéro.
+
 - **Auteur :** Olivier Pizelle, BTS SIO option SISR, MyDigitalSchool Nantes
 - **Dépôt source :** https://github.com/n7rpvygk44-gif/portfolio-dashboard
 - **Serveur de test :** hébergement Infomaniak (FTP), dossier `/portfolio`
