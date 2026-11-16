@@ -158,7 +158,7 @@ Même commande, **sans** `--essai` :
 python3 deployer.py
 ```
 
-Cette fois, chaque ligne devient `envoyé : public/index.php (1234 octets)`, avec parfois `dossier créé : /portfolio/src` quand un dossier manquait sur le serveur. À la fin :
+Cette fois, chaque ligne devient `envoi : public/index.php (1234 octets)... ok`, avec parfois `dossier créé : /portfolio/src` quand un dossier manquait sur le serveur. À la fin :
 
 ```
 Bilan : 76 envoyé(s), 0 supprimé(s), 7 protégé(s).
@@ -193,6 +193,8 @@ Le fichier `etat-deploiement.json` vient d'être créé dans le dossier du scrip
 
 Pour tout renvoyer (par exemple après avoir vidé le serveur) : `python3 deployer.py --tout`.
 
+Pour voir tout le dialogue avec le serveur (dépannage) : `python3 deployer.py --detail`. Les lignes `*cmd*` sont les commandes envoyées par le script (`STOR`, `MKD`…), les lignes `*resp*` les réponses du serveur avec leur code (`226` = fichier bien reçu). Le mot de passe y est masqué.
+
 ---
 
 ## 9. Erreurs fréquentes
@@ -205,6 +207,7 @@ Pour tout renvoyer (par exemple après avoir vidé le serveur) : `python3 deploy
 | `le fichier de configuration … config.ini est introuvable` | L'étape 4 n'a pas été faite. | `cp config.exemple.ini config.ini` |
 | `connexion refusée par le serveur : 530 …` | Identifiant ou mot de passe faux. | Vérifie le compte FTP dans le Manager Infomaniak. |
 | `impossible de joindre … : timed out` | Problème réseau. | Vérifie la connexion internet et réessaie. |
+| `ERREUR : l'envoi a été interrompu : timed out` (l'essai marchait) | L'essai n'utilise que la **connexion de commande**. L'envoi réel ouvre en plus une **connexion de données** par fichier, et c'est elle qui restait bloquée : le serveur FTPS d'Infomaniak n'accepte pas la façon dont Python chiffre cette 2ᵉ connexion par défaut (TLS 1.3, fermeture TLS). Corrigé le 16/11/2026 dans le script (TLS 1.2, réutilisation de session, fermeture directe). | Récupère la dernière version du script (GitHub Desktop › `deploiement-ftp` › Fetch puis Pull) et relance. Si ça bloque encore, lance `python3 deployer.py --detail` : le dialogue FTP complet s'affiche, la dernière ligne montre où ça coince. |
 | `certificate verify failed` | Python ne connaît pas encore les certificats de confiance. | Finder › Applications › dossier Python 3.x › double-clic sur *Install Certificates.command*. |
 | `command not found: python3` ou `git` | Outils de développement absents. | `xcode-select --install`, puis accepte. |
 

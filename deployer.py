@@ -94,6 +94,8 @@ def lire_configuration(chemin):
         "mot_de_passe": ini.get("ftp", "mot_de_passe", fallback=""),
         "dossier_distant": ini.get("ftp", "dossier_distant", fallback="/").rstrip("/"),
         "chiffrement": ini.getboolean("ftp", "chiffrement", fallback=True),
+        # Secondes d'attente maximum d'une réponse du serveur avant « timed out ».
+        "delai": ini.getint("ftp", "delai", fallback=60),
         # Partie [envoi] : listes de motifs, un par ligne
         "exclure": _liste(ini.get("envoi", "exclure", fallback="")),
         "proteger": _liste(ini.get("envoi", "proteger", fallback="")),
@@ -251,9 +253,15 @@ def lister_changements(reglages, commit_actuel, tout_envoyer):
 # ===========================================================================
 class FTPSAvecReprise(ftplib.FTP_TLS):
     """
-    Version de FTP_TLS qui réutilise la session TLS pour les transferts.
-    Beaucoup de serveurs FTPS refusent les transferts sans cette réutilisation
-    (erreur « 522 SSL connection failed: session reuse required »).
+    Version de FTP_TLS adaptée aux serveurs FTPS d'hébergeurs (Infomaniak...).
+
+    En FTP, il y a DEUX connexions : la connexion de commande (login, MKD...)
+    et une connexion de données ouverte pour chaque fichier transféré.
+    Deux réglages évitent que la connexion de données reste bloquée (« timed out ») :
+      1. on réutilise la session TLS de la connexion de commande pour les données ;
+         beaucoup de serveurs l'exigent (« 522 session reuse required ») ;
+      2. après l'envoi, on ferme la connexion de données sans attendre une réponse
+         TLS que certains serveurs n'envoient jamais.
     """
 
     def ntransfercmd(self, cmd, rest=None):
@@ -263,6 +271,20 @@ class FTPSAvecReprise(ftplib.FTP_TLS):
                 conn, server_hostname=self.host, session=self.sock.session
             )
         return conn, taille
+
+    def storbinary(self, cmd, fp, blocksize=8192, callback=None, rest=None):
+        """Comme ftplib, mais sans conn.unwrap(), qui peut attendre indéfiniment."""
+        self.voidcmd("TYPE I")
+        conn = self.transfercmd(cmd, rest)
+        try:
+            while True:
+                bloc = fp.read(blocksize)
+                if not bloc:
+                    break
+                conn.sendall(bloc)
+        finally:
+            conn.close()
+        return self.voidresp()  # le serveur confirme la réception (code 226)
 
 
 def se_connecter(reglages):
@@ -276,14 +298,18 @@ def se_connecter(reglages):
     try:
         if reglages["chiffrement"]:
             print("Connexion chiffrée (FTPS) à " + reglages["hote"] + "...")
-            ftp = FTPSAvecReprise(context=ssl.create_default_context(), timeout=30)
+            contexte = ssl.create_default_context()
+            # TLS 1.2 maximum : avec TLS 1.3, la réutilisation de session des
+            # connexions de données échoue sur de nombreux serveurs FTP.
+            contexte.maximum_version = ssl.TLSVersion.TLSv1_2
+            ftp = FTPSAvecReprise(context=contexte, timeout=reglages["delai"])
             ftp.connect(reglages["hote"], reglages["port"])
             ftp.auth()               # passe la connexion de commande en TLS
             ftp.login(reglages["utilisateur"], mot_de_passe)
             ftp.prot_p()             # chiffre aussi les fichiers transférés
         else:
             print("ATTENTION : connexion NON chiffrée (FTP simple) à " + reglages["hote"] + "...")
-            ftp = ftplib.FTP(timeout=30)
+            ftp = ftplib.FTP(timeout=reglages["delai"])
             ftp.connect(reglages["hote"], reglages["port"])
             ftp.login(reglages["utilisateur"], mot_de_passe)
     except ftplib.error_perm as erreur:
@@ -292,6 +318,8 @@ def se_connecter(reglages):
         arreter("impossible de joindre " + reglages["hote"] + " : " + str(erreur))
 
     ftp.set_pasv(True)  # mode passif : fonctionne derrière une box internet
+    if reglages.get("detail"):
+        ftp.set_debuglevel(1)  # affiche tout le dialogue FTP (*cmd* / *resp*)
     print("Connecté. Message du serveur : " + ftp.getwelcome().splitlines()[0])
     return ftp
 
@@ -357,9 +385,12 @@ def envoyer(ftp, reglages, commit, a_envoyer, a_supprimer, essai):
         ).stdout
 
         creer_dossiers(ftp, distant.rsplit("/", 1)[0], deja_crees)
+        # On affiche le nom AVANT l'envoi (flush = tout de suite) : en cas de
+        # blocage, on voit sur quel fichier ça coince.
+        print("  envoi : " + chemin + " (" + str(len(contenu)) + " octets)...", end=" ", flush=True)
         # STOR : commande FTP qui dépose un fichier sur le serveur.
         ftp.storbinary("STOR " + distant, io.BytesIO(contenu))
-        print("  envoyé : " + chemin + " (" + str(len(contenu)) + " octets)")
+        print("ok")
         envoyes += 1
 
     if reglages["supprimer"]:
@@ -405,10 +436,12 @@ def main():
     options = argparse.ArgumentParser(description="Déploie le portfolio de Git vers FTP.")
     options.add_argument("--essai", action="store_true", help="montre ce qui serait fait, sans rien envoyer")
     options.add_argument("--tout", action="store_true", help="renvoie tous les fichiers")
+    options.add_argument("--detail", action="store_true", help="affiche le dialogue FTP complet (dépannage)")
     options.add_argument("--config", default=str(DOSSIER_SCRIPT / "config.ini"), help="fichier de configuration")
     args = options.parse_args()
 
     reglages = lire_configuration(Path(args.config))
+    reglages["detail"] = args.detail
     commit = recuperer_depot(reglages)
     a_envoyer, a_supprimer = lister_changements(reglages, commit, args.tout)
 

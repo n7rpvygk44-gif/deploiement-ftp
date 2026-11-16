@@ -56,6 +56,7 @@ Les réglages importants de `config.ini` :
 python3 deployer.py --essai   # 1re fois : montre ce qui serait fait, sans rien modifier
 python3 deployer.py           # déploiement réel (seulement les changements)
 python3 deployer.py --tout    # renvoie tous les fichiers (après un souci sur le serveur)
+python3 deployer.py --detail  # affiche le dialogue FTP complet (dépannage)
 ```
 
 Le mot de passe FTP est demandé ; rien ne s'affiche pendant la frappe, c'est normal.
@@ -72,8 +73,8 @@ Changements depuis le dernier déploiement (4ffbf13 → a7c24b3) :
 À envoyer : 3 fichier(s), à supprimer : 1.
 ...
   protégé, laissé tel quel : data/kb.json
-  envoyé : public/assets/css/admin.css (5386 octets)
-  envoyé : public/nouveau.txt (8 octets)
+  envoi : public/assets/css/admin.css (5386 octets)... ok
+  envoi : public/nouveau.txt (8 octets)... ok
   supprimé : bin/router.php
 Bilan : 2 envoyé(s), 1 supprimé(s), 1 protégé(s).
 ```
@@ -94,6 +95,7 @@ Bilan : 2 envoyé(s), 1 supprimé(s), 1 protégé(s).
 |---|---|---|
 | `connexion refusée par le serveur : 530` | Identifiant ou mot de passe faux | Vérifier dans le Manager Infomaniak › FTP |
 | `impossible de joindre … : timed out` | Réseau, ou FTPS bloqué | Réessayer ; en dernier recours `chiffrement = non` (non chiffré) |
+| `l'envoi a été interrompu : timed out` | Connexion de données FTPS bloquée (corrigé le 16/11/2026) | Mettre le script à jour ; sinon `--detail` pour voir où ça bloque |
 | `certificate verify failed` | Certificat du serveur non reconnu | Sur Mac, lancer « Install Certificates.command » dans le dossier Python des Applications |
 | `le dépôt local est sur la branche …` | GitHub Desktop est sur une autre branche | Repasser sur `main` dans GitHub Desktop |
 | `modifications non enregistrées` | Des fichiers ont été modifiés sans commit | Faire un commit (ou annuler) dans GitHub Desktop |
