@@ -5,3 +5,5 @@ etat-deploiement.json
 # Fichiers techniques
 __pycache__/
 .DS_Store
+# Copies de l'ancien .htaccess du serveur, faites avant de le remplacer.
+sauvegarde-htaccess-*.txt

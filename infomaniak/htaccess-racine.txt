@@ -1,0 +1,32 @@
+# ==========================================================================
+# .htaccess à la RACINE du site Infomaniak (dossier « / » dans FileZilla)
+#
+# Problème : l'école a créé l'hébergement, je ne peux pas choisir le dossier
+# racine du site. Le serveur affiche donc le dossier « / », alors que la page
+# d'accueil du portfolio est dans « /portfolio/public/ », et que le code
+# (src, templates, bin), les données (data) et config.php ne doivent JAMAIS
+# être lisibles depuis Internet.
+#
+# Solution : ces règles (module Apache mod_rewrite) font que
+#   - https://olivier.pizelle.mds-nantes.fr/xxx affiche portfolio/public/xxx ;
+#   - toute adresse qui commence par /portfolio/ tapée à la main est bloquée
+#     (erreur 403). Seul portfolio/public/ garde ses propres règles (son
+#     .htaccess) : y accéder directement affiche au pire la page 404 du site.
+# ==========================================================================
+
+# Ne jamais afficher la liste des fichiers d'un dossier.
+Options -Indexes
+RewriteEngine On
+
+# 1. Adresse /portfolio/... tapée par un visiteur (code, données, config.php...) :
+#    accès interdit (403).
+#    THE_REQUEST = la ligne exacte envoyée par le navigateur (« GET /chemin HTTP/1.1 »).
+#    On s'en sert pour distinguer une adresse tapée par un visiteur d'une
+#    réécriture faite par la règle 2 ci-dessous, qui elle est autorisée.
+RewriteCond %{THE_REQUEST} \s/+portfolio(/|\s|\?)
+RewriteRule ^ - [F]
+
+# 2. Le site lui-même : chaque adresse est servie depuis portfolio/public/.
+#    La première ligne évite de réécrire deux fois la même adresse.
+RewriteRule ^portfolio/public/ - [L]
+RewriteRule ^(.*)$ portfolio/public/$1 [L]

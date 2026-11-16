@@ -100,6 +100,9 @@ def lire_configuration(chemin):
         "exclure": _liste(ini.get("envoi", "exclure", fallback="")),
         "proteger": _liste(ini.get("envoi", "proteger", fallback="")),
         "supprimer": ini.getboolean("envoi", "supprimer_fichiers_effaces", fallback=True),
+        # Partie [racine] : .htaccess à placer à la racine du site (vide = rien)
+        "htaccess_local": ini.get("racine", "htaccess", fallback="").strip(),
+        "htaccess_distant": ini.get("racine", "dossier", fallback="/").rstrip("/") + "/.htaccess",
     }
 
     # Ordre de priorité pour le mot de passe :
@@ -418,6 +421,45 @@ def envoyer(ftp, reglages, commit, a_envoyer, a_supprimer, essai):
               + str(proteges) + " protégé(s).")
 
 
+def installer_htaccess_racine(ftp, reglages, essai):
+    """
+    Place le fichier .htaccess de la racine du site (voir infomaniak/htaccess-racine.txt).
+    Il fait afficher portfolio/public/ à l'adresse du site et bloque l'accès
+    direct au code et aux données. Ce fichier ne fait pas partie du portfolio :
+    il dépend de l'hébergeur, c'est pourquoi il est rangé avec le script.
+    """
+    if not reglages["htaccess_local"]:
+        return  # rien à faire : option désactivée dans config.ini
+    titre("5. Fichier .htaccess de la racine du site")
+    local = Path(reglages["htaccess_local"])
+    if not local.is_absolute():
+        local = DOSSIER_SCRIPT / local
+    voulu = local.read_bytes()
+    distant = reglages["htaccess_distant"]
+
+    # On télécharge la version du serveur (RETR) pour la comparer.
+    actuel = io.BytesIO()
+    try:
+        ftp.retrbinary("RETR " + distant, actuel.write)
+        actuel = actuel.getvalue()
+    except ftplib.error_perm:
+        actuel = None  # pas encore de .htaccess sur le serveur
+
+    if actuel == voulu:
+        print("  " + distant + " est déjà à jour.")
+        return
+    if essai:
+        print("  " + ("remplacerait : " if actuel is not None else "enverrait : ") + distant)
+        return
+    if actuel is not None:
+        # Un autre .htaccess existait : on en garde une copie avant de le remplacer.
+        copie = DOSSIER_SCRIPT / ("sauvegarde-htaccess-" + datetime.now().strftime("%Y%m%d-%H%M%S") + ".txt")
+        copie.write_bytes(actuel)
+        print("  ancien " + distant + " sauvegardé dans " + copie.name)
+    ftp.storbinary("STOR " + distant, io.BytesIO(voulu))
+    print("  envoyé : " + distant)
+
+
 def memoriser_deploiement(reglages, commit):
     """Note le commit déployé, pour ne renvoyer que les changements la prochaine fois."""
     etat = lire_etat()
@@ -445,13 +487,17 @@ def main():
     commit = recuperer_depot(reglages)
     a_envoyer, a_supprimer = lister_changements(reglages, commit, args.tout)
 
-    if not a_envoyer and not a_supprimer:
+    if not a_envoyer and not a_supprimer and not reglages["htaccess_local"]:
         print("\nLe serveur est déjà à jour. Fin.")
         return
 
     ftp = se_connecter(reglages)
     try:
-        envoyer(ftp, reglages, commit, a_envoyer, a_supprimer, args.essai)
+        if a_envoyer or a_supprimer:
+            envoyer(ftp, reglages, commit, a_envoyer, a_supprimer, args.essai)
+        else:
+            print("\nAucun fichier du portfolio à envoyer : le serveur est déjà à jour.")
+        installer_htaccess_racine(ftp, reglages, args.essai)
     except (OSError, ftplib.Error) as erreur:
         # On ne note pas le commit : le prochain lancement renverra les mêmes fichiers.
         arreter("l'envoi a été interrompu : " + str(erreur) + "\nRelance le script, il reprendra.")

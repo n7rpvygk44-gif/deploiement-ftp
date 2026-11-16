@@ -170,13 +170,47 @@ Le fichier `etat-deploiement.json` vient d'être créé dans le dossier du scrip
 
 ---
 
-## 7. Vérifier sur Infomaniak
+## 7. Faire afficher le portfolio à l'adresse du site
 
-1. Ouvre FileZilla (ou le gestionnaire de fichiers du Manager Infomaniak) : le dossier `/portfolio` doit contenir `bin`, `config.php`, `data`, `public`, `src`, `templates`.
-2. Le site doit afficher le contenu de **`/portfolio/public`**, pas `/portfolio` : seuls les fichiers de `public/` doivent être visibles depuis Internet ; `src/`, `data/` et `config.php` doivent rester cachés. Dans le Manager Infomaniak, ouvre les réglages de ton site et règle son **dossier racine** sur `/portfolio/public` (le nom exact du menu peut varier selon l'interface).
-3. Ouvre l'adresse du site de test dans le navigateur.
+**Adresse du site :** https://olivier.pizelle.mds-nantes.fr
 
-> Rappel : Infomaniak n'est qu'un essai. Le site officiel reste https://olivierpizelle.alwaysdata.net, que ce script ne touche pas.
+### Le problème
+
+L'hébergement a été créé par l'école : je n'ai pas accès au Manager Infomaniak et je ne peux pas choisir le **dossier racine** du site. Le serveur affiche donc le dossier `/` du FTP, qui contient `INFOMANIAK/` (dossier de l'hébergeur, à ne pas toucher) et `portfolio/`.
+
+Or la page d'accueil du portfolio est dans `portfolio/public/`. Et surtout, `portfolio/src`, `portfolio/data`, `portfolio/templates`, `portfolio/bin` et `portfolio/config.php` ne doivent **jamais** être lisibles depuis Internet : ils contiennent le code et les données.
+
+### La solution : un fichier `.htaccess` à la racine
+
+`.htaccess` est un fichier de réglages lu par le serveur web Apache. Celui-ci, rangé dans `infomaniak/htaccess-racine.txt`, contient deux règles :
+
+1. toute adresse tapée qui commence par `/portfolio/` est **refusée** (erreur 403) ;
+2. toute autre adresse est servie depuis `portfolio/public/` : `https://olivier.pizelle.mds-nantes.fr/competences` affiche donc la page Compétences.
+
+Le script l'envoie lui-même, si la partie `[racine]` de `config.ini` est remplie (c'est le cas dans le modèle) :
+
+```ini
+[racine]
+htaccess = infomaniak/htaccess-racine.txt
+dossier = /
+```
+
+À chaque lancement, l'étape **5** du script compare le `.htaccess` du serveur avec celui du dossier `infomaniak/`. Il l'envoie s'il manque ou s'il a changé. S'il existait déjà un autre `.htaccess`, une copie est d'abord gardée sur le Mac (`sauvegarde-htaccess-<date>.txt`).
+
+> Le nom commence par un point, donc le Finder et FileZilla le cachent. Dans FileZilla : menu **Serveur › Forcer l'affichage des fichiers cachés**.
+
+### Vérifier dans le navigateur
+
+| Adresse | Résultat attendu |
+|---|---|
+| https://olivier.pizelle.mds-nantes.fr/ | La page d'accueil du portfolio (plus la page « Bienvenue ») |
+| https://olivier.pizelle.mds-nantes.fr/competences | La page Compétences |
+| https://olivier.pizelle.mds-nantes.fr/portfolio/config.php | **403 Forbidden** (accès interdit) : c'est voulu |
+| https://olivier.pizelle.mds-nantes.fr/portfolio/data/profile.json | **403 Forbidden** : c'est voulu |
+
+Si la page « Bienvenue » s'affiche encore : vide le cache du navigateur (Cmd + Maj + R). Si elle reste, c'est que `/` dans FileZilla n'est pas le dossier du site : envoie une capture de FileZilla.
+
+> Rappel : ce site de l'école est un essai. Le site officiel reste https://olivierpizelle.alwaysdata.net, que ce script ne touche pas.
 
 ---
 
@@ -207,6 +241,7 @@ Pour voir tout le dialogue avec le serveur (dépannage) : `python3 deployer.py -
 | `le fichier de configuration … config.ini est introuvable` | L'étape 4 n'a pas été faite. | `cp config.exemple.ini config.ini` |
 | `connexion refusée par le serveur : 530 …` | Identifiant ou mot de passe faux. | Vérifie le compte FTP dans le Manager Infomaniak. |
 | `impossible de joindre … : timed out` | Problème réseau. | Vérifie la connexion internet et réessaie. |
+| La page « Bienvenue » ou « Accès interdit ! Error 403 … pas de document index » s'affiche à l'adresse du site | Le `.htaccess` de la racine n'est pas sur le serveur. | Vérifie la partie `[racine]` de `config.ini` (voir partie 7) et relance le script. |
 | `ERREUR : l'envoi a été interrompu : timed out` (l'essai marchait) | L'essai n'utilise que la **connexion de commande**. L'envoi réel ouvre en plus une **connexion de données** par fichier, et c'est elle qui restait bloquée : le serveur FTPS d'Infomaniak n'accepte pas la façon dont Python chiffre cette 2ᵉ connexion par défaut (TLS 1.3, fermeture TLS). Corrigé le 16/11/2026 dans le script (TLS 1.2, réutilisation de session, fermeture directe). | Récupère la dernière version du script (GitHub Desktop › `deploiement-ftp` › Fetch puis Pull) et relance. Si ça bloque encore, lance `python3 deployer.py --detail` : le dialogue FTP complet s'affiche, la dernière ligne montre où ça coince. |
 | `certificate verify failed` | Python ne connaît pas encore les certificats de confiance. | Finder › Applications › dossier Python 3.x › double-clic sur *Install Certificates.command*. |
 | `command not found: python3` ou `git` | Outils de développement absents. | `xcode-select --install`, puis accepte. |
@@ -224,6 +259,7 @@ Le fichier `deployer.py` est découpé en fonctions, une par étape. Chacune est
 | `lister_changements()` | **Étape 2.** Lit le dernier commit envoyé dans `etat-deploiement.json`, puis `git diff --name-status` pour lister les fichiers ajoutés, modifiés et supprimés. Première fois : `git ls-files` (tous les fichiers). Retire les fichiers exclus. |
 | `se_connecter()` | **Étape 3.** Connexion FTPS avec `ftplib.FTP_TLS` : `AUTH TLS` (chiffre la connexion), `login`, `PROT P` (chiffre aussi les transferts), mode passif. |
 | `envoyer()` | **Étape 4.** Pour chaque fichier : vérifie s'il est protégé, crée les dossiers manquants (`MKD`), envoie le contenu (`STOR`). Supprime les fichiers effacés dans Git (`DELE`). |
+| `installer_htaccess_racine()` | **Étape 5.** Télécharge le `.htaccess` de la racine (`RETR`), le compare à `infomaniak/htaccess-racine.txt` et l'envoie s'il manque ou a changé, après en avoir gardé une copie. |
 | `memoriser_deploiement()` | Note le commit envoyé, seulement si tout s'est bien passé. |
 | `main()` | Lit les options (`--essai`, `--tout`) et enchaîne les étapes. |
 

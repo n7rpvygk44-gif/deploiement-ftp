@@ -6,7 +6,7 @@ Script Python qui met en ligne mon portfolio sur un serveur FTP à partir de son
 
 - **Auteur :** Olivier Pizelle, BTS SIO option SISR, MyDigitalSchool Nantes
 - **Dépôt source :** https://github.com/n7rpvygk44-gif/portfolio-dashboard
-- **Serveur de test :** hébergement Infomaniak (FTP), dossier `/portfolio`
+- **Serveur de test :** hébergement Infomaniak de l'école, https://olivier.pizelle.mds-nantes.fr (code dans `/portfolio`)
 
 ## Ce que fait le script
 
@@ -16,6 +16,7 @@ Script Python qui met en ligne mon portfolio sur un serveur FTP à partir de son
 | 2. Tri (facultatif de l'exercice) | Liste les fichiers modifiés depuis le dernier déploiement pour n'envoyer que ceux-là. La première fois, tout est envoyé. | `git diff --name-status`, `git ls-files` |
 | 3. Connexion | Se connecte au serveur en **FTPS** (FTP chiffré par TLS) : le mot de passe et les fichiers ne circulent pas en clair. | `AUTH TLS`, `USER`/`PASS`, `PROT P` |
 | 4. Envoi | Envoie les fichiers, supprime sur le serveur ceux effacés dans Git, puis note le commit déployé dans `etat-deploiement.json`. | `MKD`, `STOR`, `DELE`, `QUIT` |
+| 5. Racine | Place le `.htaccess` de la racine du site (`infomaniak/htaccess-racine.txt`) : l'adresse du site affiche `portfolio/public/`, et l'accès direct au code et aux données est refusé (403). Utile quand on ne peut pas choisir le dossier racine. | `RETR`, `STOR` |
 
 Règles de sécurité :
 
@@ -85,6 +86,7 @@ Bilan : 2 envoyé(s), 1 supprimé(s), 1 protégé(s).
 |---|---|---|
 | `deployer.py` | Le script, commenté étape par étape | Oui |
 | `config.exemple.ini` | Modèle de configuration, sans mot de passe | Oui |
+| `infomaniak/htaccess-racine.txt` | `.htaccess` à placer à la racine du site de l'école | Oui |
 | `.gitignore` | Empêche de publier `config.ini` et l'état local | Oui |
 | `config.ini` | Ma configuration réelle | **Non** |
 | `etat-deploiement.json` | Dernier commit déployé sur chaque serveur | Non |
