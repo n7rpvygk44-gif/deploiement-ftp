@@ -1,0 +1,7 @@
+# Contient le mot de passe FTP : ne jamais le publier.
+config.ini
+# Mémoire locale du dernier déploiement (propre à cet ordinateur).
+etat-deploiement.json
+# Fichiers techniques
+__pycache__/
+.DS_Store
